@@ -1,11 +1,6 @@
 import sqlite3 #using sqlite3
 import hashlib #importing python password hasing
 
-# ---- Theme Colors ---- 
-
-BG_Main = "F5F7FA"
-
-
 
 def hash_password(password):
     # hashing password
