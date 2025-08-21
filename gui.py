@@ -13,6 +13,9 @@ import database                   # Your own database.py file with hashing + ver
 
 DB_PATH = "schedule_manager.db"   # Database file name (must match database.py)
 
+
+
+
 # -------------------------------------------------------------------
 # Helper function for registering new users (CREATE ACCOUNT)
 # -------------------------------------------------------------------
