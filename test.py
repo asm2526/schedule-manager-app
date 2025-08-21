@@ -1,1 +1,1 @@
-print("hello world")
+print("Hello, Schedule Manager")
