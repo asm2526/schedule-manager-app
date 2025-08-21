@@ -48,21 +48,4 @@ def verify_user(username, password):
     conn = sqlite3.connect('schedule_manager.db')
     cursor = conn.cursor()
 
-    cursor.execute('SELECT password_hash FROM users where username = ?', (username,))
-    result = cursor.fetchone() #fetching the first matching row
-
-    conn.close()
-    #closing connection
-
-    if result:
-            stored_hash = result[0]
-            input_hash = hash_password(password)
-            return stored_hash == input_hash
-    return False
-
-if __name__ == "__main__":
-     init_db()
-     # Testing verification
-     test_result = verify_user("tester", "Testing123456!")
-     print(f"verification test: {'Success' if test_result else 'Failed'}")
-    
+    cursor.execute('SELECT password_hash FROM u
