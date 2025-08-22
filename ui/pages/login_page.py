@@ -52,6 +52,10 @@ class LoginPage(ttk.Frame):
 
     # called by app after page is raise
     def on_show(self):
+        self.username_var.set("")
+        self.password_var.set("")
+        self.show_pw.set(False)
+        self.password_entry.config(show="•")
         self.username_entry.focus_set()  # Focus on username field when shown
 
     def _toggle_password(self):

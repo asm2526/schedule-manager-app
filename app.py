@@ -5,6 +5,8 @@ import database
 from ui.pages.login_page import LoginPage
 from ui.pages.register_page import RegisterPage
 from ui.pages.home_page import HomePage
+from ui.pages.today_page import TodayPage
+from ui.pages.calendar_page import CalendarPage
 
 APP_TITLE = "Schedule Manager"
 WINDOW_SIZE = "500x320"
@@ -33,7 +35,7 @@ class App(tk.Tk):
         self.frames = {}
 
         # Register each page class here
-        for Page in (LoginPage, RegisterPage, HomePage):
+        for Page in (LoginPage, RegisterPage, HomePage, TodayPage, CalendarPage):
             name = Page.__name__
             frame = Page(parent=container, controller=self)
             self.frames[name] = frame
@@ -60,4 +62,4 @@ class App(tk.Tk):
 
 if __name__ == "__main__":
     app = App()
-    app.mainloop()
+    app.mainloop

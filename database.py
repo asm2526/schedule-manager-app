@@ -1,69 +1,59 @@
-import sqlite3 #using sqlite3
-import hashlib #importing python password hasing
+# database.py
+# Centralizes all SQLite access so every part of the app hits the SAME DB file.
 
+import sqlite3
+import hashlib
+import os
 
-def hash_password(password):
-    # hashing password
+# ---- DB location -----------------------------------------------------------
+# Use an ABSOLUTE path anchored to THIS file's folder, so it doesn't depend on
+# where you launched Python from (cwd). This is the core fix for "registered
+# but can't login" when modules live in subfolders.
+DB_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                       "schedule_manager.db")
+
+def _get_conn() -> sqlite3.Connection:
+    """Open a connection to the single, known DB file."""
+    return sqlite3.connect(DB_FILE)
+
+# ---- Password hashing ------------------------------------------------------
+def hash_password(password: str) -> str:
+    """
+    Hash the password using SHA-256. (Still sqlite3—this is just the hashing step.)
+    NOTE: For production you’d use bcrypt/argon2, but SHA-256 is fine for this demo.
+    """
     return hashlib.sha256(password.encode()).hexdigest()
-    # provides cryptographic hashing (SHA-256) to secure passwords, critical for app’s security.
 
-def init_db():
-    #initializing sql db and users table
-    conn = sqlite3.connect('schedule_manager.db') 
-    # creating database
-    cursor = conn.cursor()
-    # creating cursor object to execute SQl commands
+# ---- Schema init / sample seeding -----------------------------------------
+def init_db() -> None:
+    """
+    Ensure the database and 'users' table exist.
+    Also (optionally) seed the 'tester' user for quick dev testing.
+    """
+    with _get_conn() as conn:
+        cur = conn.cursor()
+        cur.execute("""
+            CREATE TABLE IF NOT EXISTS users (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                username TEXT UNIQUE NOT NULL,
+                password_hash TEXT NOT NULL
+            )
+        """)
 
-    #creating users table
-    cursor.execute('''
-        CREATE TABLE IF NOT EXISTS users (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            username TEXT UNIQUE NOT NULL,
-            password_hash TEXT NOT NULL
-        )
-    ''')
-
-    #removing test user if already there
-    cursor.execute('DELETE FROM users WHERE username = ?', ('tester',))
-
-    
-    # adding a current sample user
-    sample_username = "tester"
-    sample_password = 'Testing123456!'
-    password_hash = hash_password(sample_password)
-
-    try:
-        cursor.execute('INSERT INTO users (username, password_hash) VALUES (?, ?)',
-                       (sample_username, password_hash)) #question marks preventing SQL injection
+        # Optional: clear and re-seed the sample 'tester' account for dev
+        cur.execute("DELETE FROM users WHERE username = ?", ("tester",))
+        try:
+            cur.execute(
+                "INSERT INTO users (username, password_hash) VALUES (?, ?)",
+                ("tester", hash_password("Testing123456!"))
+            )
+            print("Sample user added: tester")
+        except sqlite3.IntegrityError:
+            # Already exists, ignore
+            pass
         conn.commit()
-        print(f"Sample user added: {sample_username}")
-    except sqlite3.IntegrityError:
-        print("Sample user already exists")
-        #catching errors if the username already exists
 
-    conn.close()
-    #closing query
-
-def verify_user(username, password):
-    # verify if username and password match a databse record
-    conn = sqlite3.connect('schedule_manager.db')
-    cursor = conn.cursor()
-
-    cursor.execute('SELECT password_hash FROM users where username = ?', (username,))
-    result = cursor.fetchone() #fetching the first matching row
-
-    conn.close()
-    #closing connection
-
-    if result:
-            stored_hash = result[0]
-            input_hash = hash_password(password)
-            return stored_hash == input_hash
-    return False
-
-if __name__ == "__main__":
-     init_db()
-     # Testing verification
-     test_result = verify_user("tester", "Testing123456!")
-     print(f"verification test: {'Success' if test_result else 'Failed'}")
-    
+# ---- Public helpers used by your pages ------------------------------------
+def create_user(username: str, password: str) -> bool:
+    """
+    Create a new user in SQLite (using 
