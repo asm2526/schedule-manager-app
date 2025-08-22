@@ -16,6 +16,15 @@ class RegisterPage(ttk.Frame):
 
         ttk.Label(wrapper, text="Create Account").pack(anchor="w", pady=(0,10))
 
+
+        # Quick return to login (appears before the create/back buttons
+        
+        ttk.Button(
+            wrapper,
+            text = "Return to Login",
+            command=lambda: self.controller.show_frame("LoginPage")
+        ).pack(side="bottom", fill="x", pady=(12,0))
+
         # Username
         ttk.Label(wrapper, text="New Username").pack(anchor="w")
         self.user_var = tk.StringVar()
