@@ -53,7 +53,89 @@ def init_db() -> None:
             pass
         conn.commit()
 
+        cur.execute("""
+            Create TABLE IF NOT EXISTS events (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    username TEXT NOT NULL,
+                    title TEXT NOT NULL,
+                    start_iso TEXT NOT NULL, -- ISO 8601 datetime string
+                    duration_minutes INTEGER NOT NULL DEFAULT 60,
+                    created_at TEXT NOT NULL DEFAULT (datetime('now', 'localtime')),
+                    FOREIGN KEY (username) REFERENCES users(username)
+                    )
+                """)
+
 # ---- Public helpers used by your pages ------------------------------------
 def create_user(username: str, password: str) -> bool:
     """
-    Create a new user in SQLite (using 
+    Create a new user in SQLite (using sqlite3). Returns True on success.
+    Returns False if the username already exists or bad input.
+    """
+    if not username or not password:
+        return False
+    try:
+        with _get_conn() as conn:
+            conn.execute(
+                "INSERT INTO users (username, password_hash) VALUES (?, ?)",
+                (username, hash_password(password))
+            )
+            conn.commit()
+        return True
+    except sqlite3.IntegrityError:
+        # UNIQUE constraint failed: users.username
+        return False
+
+def verify_user(username: str, password: str) -> bool:
+    """
+    Validate a username/password against the DB (still sqlite3 under the hood).
+    """
+    with _get_conn() as conn:
+        row = conn.execute(
+            "SELECT password_hash FROM users WHERE username = ?",
+            (username,)
+        ).fetchone()
+    if not row:
+        return False
+    return row[0] == hash_password(password)
+
+def add_event(username: str, title: str, start_iso: str, duration_minutes: int = 60) -> bool:
+    """ Add a single event for a given user
+    - start_iso 'YYY-MM-DD HH:MM' (local time)
+    REturns the new event ID on success"""
+    if not username or not title or not start_iso:
+        raise ValueError("Missing required fields")
+    with _get_conn() as conn:
+        cur = conn.cursor()
+        cur.execute(
+            " INSERT INTO events (username, title, start_iso, duration-minutes) VALUES (?, ?, ?, ?)",
+            (username, title, start_iso, duration_minutes)
+        )
+        conn.commit()
+        return cur.lastrowid
+    
+def get_events_for_day(username: str, date_iso: str) -> list[tuple]:
+    """
+    Fetch events for a user on a specific day (date_iso: 'YYYY-MM-DD'), ordered by start time.
+    Returns a list of rows: (id, title, start_iso, duration_minutes)
+    """
+    with _get_conn() as conn:
+        cur = conn.cursor()
+        cur.execute(
+            """
+            SELECT id, title, start_iso, duration_minutes
+            FROM events
+            WHERE username = ?
+              AND substr(start_iso, 1, 10) = ?
+            ORDER BY start_iso ASC
+            """,
+            (username, date_iso),
+        )
+        return cur.fetchall()
+    
+    
+# ---- Dev smoke test --------------------------------------------------------
+if __name__ == "__main__":
+    init_db()
+    ok = verify_user("tester", "Testing123456!")
+    print("verification test:", "Success" if ok else "Failed")
+    print("DB file:", DB_FILE)
