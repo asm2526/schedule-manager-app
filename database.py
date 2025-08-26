@@ -107,7 +107,7 @@ def add_event(username: str, title: str, start_iso: str, duration_minutes: int =
     with _get_conn() as conn:
         cur = conn.cursor()
         cur.execute(
-            " INSERT INTO events (username, title, start_iso, duration-minutes) VALUES (?, ?, ?, ?)",
+            " INSERT INTO events (username, title, start_iso, duration_minutes) VALUES (?, ?, ?, ?)",
             (username, title, start_iso, duration_minutes)
         )
         conn.commit()
@@ -132,7 +132,7 @@ def get_events_for_day(username: str, date_iso: str) -> list[tuple]:
         )
         return cur.fetchall()
     
-    
+
 # ---- Dev smoke test --------------------------------------------------------
 if __name__ == "__main__":
     init_db()
