@@ -33,6 +33,8 @@ class Timeline(ttk.Frame):
         vsb.grid(row=0, column=1, sticky="ns")
         self.rowconfigure(0, weight=1)
         self.columnconfigure(0, weight=1)
+
+        self._bind_scroll()
         
         # Full Drawing Area
         self.canvas.config(scrollregion=(0, 0, 480, self.total_height))
@@ -118,6 +120,33 @@ class Timeline(ttk.Frame):
         visible_h = int(self.canvas.winfo_height()) or 400
         target = max(0, y - visible_h // 3)
         self.canvas.yview_moveto(target / max(1, self.total_height - visible_h))
+
+    def _on_mousewheel(self, event):
+        """
+        Cross-platform scrolling:
+        - windows/macOS: <MouseWheel> with event.delta
+        - Linux/X11 <Button-4/<Button-5> no delta
+        """
+
+        if event.num == 4:
+            self.canvas.yview_scroll(-1, "units")
+        elif event.num == 5:
+            self.canvas.yview_scroll(1, "units")
+        else:
+            #windows: delta is +- 120 per notch
+            delta = event.delta
+            if delta == 0:
+                return
+            step = -1 if delta > 0 else 1
+            #slightly bigger step for nicer feel
+            self.canvas.yview_scroll(step * 1, "units")
+
+    def _bind_scroll(self):
+        #macos/widows: smooth & wheel
+        self.canvas.bind("<MouseWheel>", self._on_mousewheel)
+        # Linux/X11: wheel emulation
+        self.canvas.bind("<Button-4>", self._on_mousewheel)
+        self.canvas.bind("<Button-5>", self._on_mousewheel)
 
 class AddEventDialog(tk.Toplevel):
     """
