@@ -113,6 +113,16 @@ def add_event(username: str, title: str, start_iso: str, duration_minutes: int =
         conn.commit()
         return cur.lastrowid
     
+def get_event_by_id(event_id: int):
+    with _get_conn() as conn:
+        cur = conn.cursor()
+        cur.execute(
+            "SElECT id, username, title, start_iso, duration_minutes, created_at "
+            "FROM events WHERE id = ?",
+            (event_id,)
+        )
+        return cur.fetchone()
+
 def get_events_for_day(username: str, date_iso: str) -> list[tuple]:
     """
     Fetch events for a user on a specific day (date_iso: 'YYYY-MM-DD'), ordered by start time.
@@ -131,7 +141,19 @@ def get_events_for_day(username: str, date_iso: str) -> list[tuple]:
             (username, date_iso),
         )
         return cur.fetchall()
-    
+
+def update_event(event_id: int, title: str, start_iso: str, duration_minutes: int) -> None:
+    with _get_conn() as conn:
+        conn.execute(
+            "UPDATE events SET title = ?, start_iso = ?, duration_minutes = ? WHERE id = ?",
+            (title.strip(), start_iso, int(duration_minutes), event_id)
+        )
+        conn.commit()
+
+def delete_event(event_id: int) -> None:
+    with _get_conn() as conn:
+        conn.execute("DELETE FROM events WHERE id = ?", (event_id,))
+        conn.commit()
 
 # ---- Dev smoke test --------------------------------------------------------
 if __name__ == "__main__":

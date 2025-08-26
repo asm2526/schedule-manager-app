@@ -48,6 +48,41 @@ class Timeline(ttk.Frame):
         self._nowline_id = None
 
         self._bind_resize()
+        self.canvas.bind("<Button-1>", self._on_click)
+
+    def _on_click(self, event):
+        """Handle clicks on events looks for tags leke event_<id>"""
+        # FIX: convert from window coords -> canvas coords (critical when scrolled)
+        cx = self.canvas.canvasx(event.x)
+        cy = self.canvas.canvasy(event.y)
+
+        items = self.canvas.find_overlapping(cx, cy, cx, cy)
+
+        if not items:
+            return
+        
+        for item in items:
+            for t in self.canvas.gettags(item):
+                if isinstance(t, str) and t.startswith("event_"):
+                    #parse the id out of "event_<id>"
+                    try:
+                        event_id = int(t.split("_",1)[1])
+                    except (IndexError, ValueError):
+                        continue
+
+                    # callback
+                    cb = getattr(self, "on_event_click", None)
+                    if callable(cb):
+                        cb(event_id)
+                        return
+                    
+                    #fallback
+                    parent = self.master
+                    while parent is not None and not hasattr(parent, "open_event_dialog"):
+                        parent = getattr(parent, "master", None)
+                    if parent is not None:
+                        parent.open_event_dialog(event_id)
+                    return
 
     def _draw_grid(self):
         """Draw hour lines and 12h labels with AM/PM"""
@@ -139,14 +174,14 @@ class Timeline(ttk.Frame):
             self.canvas.create_rectangle(
                 x1, start_y + 2, x2, end_y -2,
                 fill="#e8f0fe", outline="#5b9bff", width=1.5,
-                tags=(self.event_tag,)
+                tags=(self.event_tag, f"event_{eid}")
             )
             self.canvas.create_text(
                 x1+6, start_y+6,
                 anchor="nw",
                 text=f"{time_str} - {title}",
                 width=(x2 - x1 - 12),
-                tags=(self.event_tag,)
+                tags=(self.event_tag, f"event_{eid}")
             )
             
     def scroll_to_now(self):
@@ -305,7 +340,66 @@ class AddEventDialog(tk.Toplevel):
             return 0 if h12 == 12 else h12
         else:
             return 12 if h12 == 12 else h12 + 12
-        
+
+class EditEventDialog(tk.Toplevel):
+    def __init__(self, parent, event_row, on_update, on_delete):
+        super().__init__(parent)
+        self.title("Edit Event")
+        self.resizable(False, False)
+        self.transient(parent.winfo_toplevel())
+        self.grab_set()
+
+        (eid, title, start_iso, dur) = event_row
+        start_dt = datetime.strptime(start_iso, "%Y-%m-%d %H:%M")
+
+        #same layout as AddEventDialog but prepopped
+
+        wrapper = ttk.Frame(self, padding=14)
+        wrapper.pack(fill="both", expand=True)
+
+        ttk.Label(wrapper, text="Title").grid(row=0, column=0, sticky="w")
+        self.title_var = tk.StringVar(value=title)
+        title_entry = ttk.Entry(wrapper, textvariable = self.title_var, width=40)
+        title_entry.grid(row=1, column=0, columnspan=6, sticky="ew", pady=(2,10))
+
+        hr12 = start_dt.hour % 12 or 12
+        ampm = "AM" if start_dt.hour < 12 else "PM"
+
+        self.hour_var = tk.IntVar(value=hr12)
+        self.minute_var = tk.IntVar(value=start_dt.minute)
+        self.ampm_var = tk.StringVar(value = ampm)
+        self.dur_var = tk.IntVar(value=dur)
+
+        # time row
+        tk.Spinbox(wrapper, from_=1, to=12, textvariable=self.hour_var, width=4).grid(row=2, column=0)
+        ttk.Label(wrapper, text=":").grid(row=2, column=1)
+        tk.Spinbox(wrapper, values=(0, 15, 30, 45), textvariable=self.minute_var, width=4).grid(row=2, column=2)
+        tk.Spinbox(wrapper, values=("AM", "PM"), textvariable=self.ampm_var, width=4).grid(row=2, column=3, padx=(8,0))
+
+        ttk.Label(wrapper, text="Duration (minutes)").grid(row=3, column=0, sticky="w", pady=(10,0))
+        tk.Spinbox(wrapper, from_=5, to=480, increment=5, textvariable=self.dur_var, width=6).grid(row=4, column=0)
+
+        btns = ttk.Frame(wrapper)
+        btns.grid(row=5, column=0, columnspan=6, sticky="e", pady=(14,0))
+        ttk.Button(btns, text="Delete", command=lambda: (on_delete(eid), self.destroy())).pack(side="left")
+        ttk.Button(btns, text="Save", command=lambda: self._save(eid, on_update)).pack(side="right")
+
+        title_entry.focus_set()
+
+    def _to_24h(self, h12, ampm):
+        return 0 if h12 == 12 and ampm == "AM" else (h12 if ampm == "AM" else (12 if h12 == 12 else h12+12))
+    
+    def _save(self, eid, on_update):
+        title = self.title_var.get().strip()
+        h24 = self._to_24h(int(self.hour_var.get()), self.ampm_var.get())
+        m = int(self.minute_var.get())
+        d = int(self.dur_var.get())
+        today = date.today().strftime("%Y-%m-%d")
+        start_iso = f"{today} {h24:02d}:{m:02d}"
+        on_update(eid, title, start_iso, d)
+        self.destroy()
+
+
 
 
 
@@ -393,3 +487,30 @@ class TodayPage(ttk.Frame):
         # refresh timeline
         self.refresh()
         messagebox.showinfo("Success", "Event added.")
+
+    def open_event_dialog(self, event_id: int):
+        username = getattr(self.controller, "current_user", None)
+        if not username:
+            return
+        # get event row from db
+        rows = database.get_events_for_day(username, self._today_iso_date())
+        row = next((r for r in rows if r[0] == event_id), None)
+        if not row:
+            return
+        
+        def do_update(eid, title, start_iso, dur):
+            try:
+                database.update_event(eid, title, start_iso, dur)
+                self.refresh()
+            except Exception as e:
+                messagebox.showerror("Error", f"Could not update: {e}")
+
+        def do_delete(eid):
+            try:
+                database.delete_event(eid)
+                self.refresh()
+            except Exception as e:
+                messagebox.showerror("Error", f"Could not delete: {e}")
+        
+        EditEventDialog(self, row, do_update, do_delete)
+
