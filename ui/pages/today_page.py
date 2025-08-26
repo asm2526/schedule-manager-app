@@ -50,19 +50,40 @@ class Timeline(ttk.Frame):
         self._bind_resize()
 
     def _draw_grid(self):
+        """Draw hour lines and 12h labels with AM/PM"""
         self.canvas.delete(self.bg_tag)
+
         left_pad = 60
         width = max(480, int(self.canvas.winfo_width() or 480))
 
         for h in range(25):
             y = h * self.PPH
+            #horizontal hour line
             self.canvas.create_line(left_pad, y, width, y, fill="#d9d9d9", tags=self.bg_tag)
-            if h < 24:
-                label = f"{h:02d}:00"
-                self.canvas.create_text(8, y + 2, anchor="nw", text=label, tags=self.bg_tag)
 
-        # Vertical seperator
-        self.canvas.create_line(left_pad, 0, left_pad, self.total_height, fill="#ddd", tags=self.bg_tag)
+            if h < 24:
+                # 12 hour label with AM/PM
+                hr12 = h % 12
+                hr12 = 12 if hr12 == 0 else hr12
+                suffix = "AM" if h < 12 else "PM"
+                label_text = f"{hr12:02d}:00 {suffix}"
+
+                # place label just left of the vertical separator
+                self.canvas.create_text(
+                left_pad - 10, y + 2,
+                anchor="ne",
+                text=label_text,
+                font=("", 9),
+                fill="#c6c6c6",
+                tags=self.bg_tag
+            )
+        
+        # vertical separator between labels and lane
+        self.canvas.create_line(left_pad, 0, left_pad, self.total_height, fill="#d9d9d9", tags=self.bg_tag)
+
+        # keep scrolregion synced with current width
+        self.canvas.config(scrollregion=(0, 0, width, self.total_height))
+
 
     def _on_resize(self, _event=None):
         self._draw_grid()
@@ -80,16 +101,19 @@ class Timeline(ttk.Frame):
 
     def draw_events(self, events: list[tuple]):
         """
+        Render events as blocks with a 12h AM/PM start time perfix
         events: list of (id, title, start_iso, duration_minutes)
         """
         self.canvas.delete(self.event_tag)
+
         left_pad = 60
         right_pad=12
         x1 = left_pad + 6
-        x2 = 480 - right_pad
+        x2 = max(480, int(self.canvas.winfo_width() or 480)) - right_pad
 
         for (eid, title, start_iso, dur) in events:
             try:
+                # 1_ parse start time (support with/without seconds)
                 start_dt = datetime.strptime(start_iso, "%Y-%m-%d %H:%M")
             except ValueError:
                 # fallback: try seconds variant
@@ -98,6 +122,7 @@ class Timeline(ttk.Frame):
                 except ValueError:
                     continue
             
+            #2 position vertically
             start_y = (start_dt.hour + start_dt.minute / 60) * self.PPH
             end_y = start_y + (int(dur) / 60) * self.PPH
 
@@ -105,13 +130,25 @@ class Timeline(ttk.Frame):
             if end_y - start_y < 10:
                 end_y = start_y + 10
 
-            rect = self.canvas.create_rectangle(x1, start_y + 2, x2, end_y - 2,
-                                                fill="e8f0fe", outline = "5b9bff", width=1.5,
-                                                tags=(self.event_tag,))
-            self.canvas.create_text(x1 + 6, start_y + 6, anchor ="nw", 
-                                    text=title,
-                                    width=(x2-x1-12),
-                                    tags=(self.event_tag,))
+            #3 Convert to 12h display
+            hr12 = start_dt.hour % 12
+            hr12 = 12 if hr12 == 0 else hr12
+            suffix = "AM" if start_dt.hour < 12 else "PM"
+            time_str = f"{hr12}:{start_dt.minute:02d} {suffix}"
+
+            #4 Draw block + label
+            self.canvas.create_rectangle(
+                x1, start_y + 2, x2, end_y -2,
+                fill="e8fofe", outline="5b9bff", width=1.5,
+                tags=(self.event_tag,)
+            )
+            self.canvas.create_text(
+                x1+6, start_y+6,
+                anchor="nw",
+                text=f"{time_str} - {title}",
+                width=(x2 - x1 - 12),
+                tags=(self.event_tag,)
+            )
             
     def scroll_to_now(self):
         # scroll viewport to place now roughly one thrid from the top
