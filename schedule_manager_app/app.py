@@ -11,18 +11,11 @@ except Exception:
     def apply_style(_): pass
 
 # pages: support BOTH new package and current root locations
-try:
-    from .ui.pages.login_page import LoginPage
-    from .ui.pages.register_page import RegisterPage
-    from .ui.pages.home_page import HomePage
-    from .ui.pages.today_page import TodayPage
-    from .ui.pages.calendar_page import CalendarPage 
-except Exception:
-    from ui.pages.login_page import LoginPage
-    from ui.pages.register_page import RegisterPage
-    from ui.pages.home_page import HomePage
-    from ui.pages.today_page import TodayPage
-    from ui.pages.calendar_page import CalendarPage
+from .ui.pages.login_page import LoginPage
+from .ui.pages.register_page import RegisterPage
+from .ui.pages.home_page import HomePage
+from .ui.pages.today_page import TodayPage
+from .ui.pages.calendar_page import CalendarPage
 
 
 

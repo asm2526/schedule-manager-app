@@ -1,516 +1,274 @@
+# schedule_manager_app/ui/pages/today_page.py
+import os, sys
+from datetime import date, datetime
+
 import tkinter as tk
 from tkinter import ttk, messagebox
-from datetime import datetime, date, time, timedelta
 
-import os, sys
-ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+# Import the reusable 12h timeline widget
+from schedule_manager_app.ui.widgets.timeline import Timeline12h
+
+# Import your existing root-level database.py (unchanged for now)
+ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 if ROOT not in sys.path:
     sys.path.insert(0, ROOT)
-
-import database
-
-class Timeline(ttk.Frame):
-    "Scrollable 24-hour vertical timeline with:"
-    " hour grid lines + labels"
-    " live now indicator"
-    " event rectangles with titles"
-    ""
-    "Coordinate system:"
-    " pixels_per_hour controls vertical scale"
-    "y(t) = (hour + minute/60) * pixels_per_hour"
-
-    def __init__(self, parent, pixels_per_hour=60):
-        super().__init__(parent)
-        self.PPH = pixels_per_hour  # vertical scale
-        self.total_height = 24 * self.PPH
-
-        # Scrollable canvas
-        self.canvas = tk.Canvas(self, height=400)
-        vsb = ttk.Scrollbar(self, orient="vertical", command=self.canvas.yview)
-        self.canvas.config(yscrollcommand=vsb.set)
-
-        self.canvas.grid(row=0, column=0, sticky="nsew")
-        vsb.grid(row=0, column=1, sticky="ns")
-        self.rowconfigure(0, weight=1)
-        self.columnconfigure(0, weight=1)
-
-        self._bind_scroll()
-        
-        # Full Drawing Area
-        self.canvas.config(scrollregion=(0, 0, 480, self.total_height))
-
-        # layers
-        self.bg_tag = "grid"
-        self.now_tag = "nowline"
-        self.event_tag = "event"
-
-        self._draw_grid()
-        self._nowline_id = None
-
-        self._bind_resize()
-        self.canvas.bind("<Button-1>", self._on_click)
-
-    def _on_click(self, event):
-        """Handle clicks on events looks for tags leke event_<id>"""
-        # FIX: convert from window coords -> canvas coords (critical when scrolled)
-        cx = self.canvas.canvasx(event.x)
-        cy = self.canvas.canvasy(event.y)
-
-        items = self.canvas.find_overlapping(cx, cy, cx, cy)
-
-        if not items:
-            return
-        
-        for item in items:
-            for t in self.canvas.gettags(item):
-                if isinstance(t, str) and t.startswith("event_"):
-                    #parse the id out of "event_<id>"
-                    try:
-                        event_id = int(t.split("_",1)[1])
-                    except (IndexError, ValueError):
-                        continue
-
-                    # callback
-                    cb = getattr(self, "on_event_click", None)
-                    if callable(cb):
-                        cb(event_id)
-                        return
-                    
-                    #fallback
-                    parent = self.master
-                    while parent is not None and not hasattr(parent, "open_event_dialog"):
-                        parent = getattr(parent, "master", None)
-                    if parent is not None:
-                        parent.open_event_dialog(event_id)
-                    return
-
-    def _draw_grid(self):
-        """Draw hour lines and 12h labels with AM/PM"""
-        self.canvas.delete(self.bg_tag)
-
-        left_pad = 60
-        width = max(480, int(self.canvas.winfo_width() or 480))
-
-        for h in range(25):
-            y = h * self.PPH
-            #horizontal hour line
-            self.canvas.create_line(left_pad, y, width, y, fill="#d9d9d9", tags=self.bg_tag)
-
-            if h < 24:
-                # 12 hour label with AM/PM
-                hr12 = h % 12
-                hr12 = 12 if hr12 == 0 else hr12
-                suffix = "AM" if h < 12 else "PM"
-                label_text = f"{hr12:02d}:00 {suffix}"
-
-                # place label just left of the vertical separator
-                self.canvas.create_text(
-                left_pad - 10, y + 2,
-                anchor="ne",
-                text=label_text,
-                font=("", 9),
-                fill="#c6c6c6",
-                tags=self.bg_tag
-            )
-        
-        # vertical separator between labels and lane
-        self.canvas.create_line(left_pad, 0, left_pad, self.total_height, fill="#d9d9d9", tags=self.bg_tag)
-
-        # keep scrollregion synced with current width
-        self.canvas.config(scrollregion=(0, 0, width, self.total_height))
+import database  # expects: add_event, get_event, update_event, delete_event, get_events_for_day
 
 
-    def _on_resize(self, _event=None):
-        self._draw_grid()
-
-    def _bind_resize(self):
-        self.canvas.bind("<Configure>", self._on_resize)
-
-    def draw_nowline(self, when: datetime | None = None):
-        # remove old
-        self.canvas.delete(self.now_tag)
-        if when is None:
-            when = datetime.now()
-        y = (when.hour + when.minute / 60 + when.second / 3600) * self.PPH
-        self._nowline_id = self.canvas.create_line(0, y, 480, y, fill="red", width=2, tags=self.now_tag)
-
-    def draw_events(self, events: list[tuple]):
-        """
-        Render events as blocks with a 12h AM/PM start time perfix
-        events: list of (id, title, start_iso, duration_minutes)
-        """
-        self.canvas.delete(self.event_tag)
-
-        left_pad = 60
-        right_pad=12
-        x1 = left_pad + 6
-        x2 = max(480, int(self.canvas.winfo_width() or 480)) - right_pad
-
-        for (eid, title, start_iso, dur) in events:
-            try:
-                # 1_ parse start time (support with/without seconds)
-                start_dt = datetime.strptime(start_iso, "%Y-%m-%d %H:%M")
-            except ValueError:
-                # fallback: try seconds variant
-                try:
-                    start_dt = datetime.strptime(start_iso, "%Y-%m-%d %H:%M:%S")
-                except ValueError:
-                    continue
-            
-            #2 position vertically
-            start_y = (start_dt.hour + start_dt.minute / 60) * self.PPH
-            end_y = start_y + (int(dur) / 60) * self.PPH
-            #min visible height
-            if end_y - start_y < 10:
-                end_y = start_y + 10
-
-            #3 Convert to 12h display
-            hr12 = start_dt.hour % 12
-            hr12 = 12 if hr12 == 0 else hr12
-            suffix = "AM" if start_dt.hour < 12 else "PM"
-            time_str = f"{hr12}:{start_dt.minute:02d} {suffix}"
-
-            #4 Draw block + label
-            self.canvas.create_rectangle(
-                x1, start_y + 2, x2, end_y -2,
-                fill="#e8f0fe", outline="#5b9bff", width=1.5,
-                tags=(self.event_tag, f"event_{eid}")
-            )
-            self.canvas.create_text(
-                x1+6, start_y+6,
-                anchor="nw",
-                text=f"{time_str} - {title}",
-                width=(x2 - x1 - 12),
-                tags=(self.event_tag, f"event_{eid}")
-            )
-            
-    def scroll_to_now(self):
-        # scroll viewport to place now roughly one thrid from the top
-        when = datetime.now()
-        y = (when.hour + when.minute / 60) * self.PPH
-        visible_h = int(self.canvas.winfo_height()) or 400
-        target = max(0, y - visible_h // 3)
-        self.canvas.yview_moveto(target / max(1, self.total_height - visible_h))
-
-    def _on_mousewheel(self, event):
-        """
-        Cross-platform scrolling:
-        - windows/macOS: <MouseWheel> with event.delta
-        - Linux/X11 <Button-4/<Button-5> no delta
-        """
-
-        if event.num == 4:
-            self.canvas.yview_scroll(-1, "units")
-        elif event.num == 5:
-            self.canvas.yview_scroll(1, "units")
-        else:
-            #windows: delta is +- 120 per notch
-            delta = event.delta
-            if delta == 0:
-                return
-            step = -1 if delta > 0 else 1
-            #slightly bigger step for nicer feel
-            self.canvas.yview_scroll(step * 1, "units")
-
-    def _bind_scroll(self):
-        #macos/widows: smooth & wheel
-        self.canvas.bind("<MouseWheel>", self._on_mousewheel)
-        # Linux/X11: wheel emulation
-        self.canvas.bind("<Button-4>", self._on_mousewheel)
-        self.canvas.bind("<Button-5>", self._on_mousewheel)
-
-class AddEventDialog(tk.Toplevel):
+# ---- Minimal modal popup for Edit/Delete (12-hour inputs) ----
+class EventEditor(tk.Toplevel):
     """
-    simple modal dialog to add an event for Today:
-     title
-     Hour (0...23)
-     Minute (0, 15, 30, 45)
-     Duration (minutes, default 60)"""
-    def __init__(self, parent, on_save):
+    Modal popup to edit or delete an event (Title / Time HH:MM / AM-PM / Duration).
+    Result:
+      - None (cancel) OR
+      - {"action":"delete"} OR
+      - {"action":"save","title":str,"time_12h":"HH:MM","ampm":"AM|PM","duration":int}
+    """
+    def __init__(self, parent, *, title: str, time_12h: str, ampm: str, duration: int):
         super().__init__(parent)
-        self.title("Add Event")
-        self.resizable(False, False)
-        self.transient(parent.winfo_toplevel())
-        self.grab_set() # modal
-
-        pad=14
-        wrapper = ttk.Frame(self, padding=16)
-        wrapper.pack(fill="both", expand=True)
-        self.columnconfigure(0, weight=1)
-
-        #title
-        ttk.Label(wrapper, text="Event Title").grid(row=0, column=0, sticky="w")
-        self.title_var = tk.StringVar()
-        title_entry = ttk.Entry(wrapper, textvariable=self.title_var, width= 32)
-        title_entry.grid(row=1, column=0,columnspan=4, sticky="ew", pady=(2,10))
-
-        # Time 
-        now = datetime.now()
-        hr12 = now.hour % 12 or 12
-        ampm_default = "AM" if now.hour < 12 else "PM"
-
-        ttk.Label(wrapper, text="Start Time").grid(row=2, column=0, sticky="w")
-
-        self.hour_var = tk.IntVar(value=hr12)
-        self.minute_var = tk.IntVar(value=(now.minute // 15) * 15)
-        self.ampm_var = tk.StringVar(value=ampm_default)
-
-        # Hour 1..12
-        hour_sb = tk.Spinbox(
-            wrapper, from_=1, to=12,
-            textvariable=self.hour_var, width=4, justify="right",
-            wrap=True
-        )
-        hour_sb.grid(row=3, column=0, sticky="w")
-
-        ttk.Label(wrapper, text=":").grid(row=3, column=1, sticky="w", padx=(4,4))
-
-        # minute: 0/15/30/45
-        min_sb = tk.Spinbox(
-            wrapper, values=(0,15,30,45),
-            textvariable=self.minute_var, width=4, justify="right",
-            wrap=True
-        )
-        min_sb.grid(row=3, column=2, sticky="w")
-
-        # AM/PM spinbox
-        ampm_sb = tk.Spinbox(
-            wrapper, values=("AM", "PM"),
-            textvariable=self.ampm_var, width=4, justify="center",
-            wrap=True
-        )
-        ampm_sb.grid(row=3, column=3, sticky="w", padx=(8,0))
-
-        # Duration
-        ttk.Label(wrapper, text="Duration (minutes)").grid(row=4, column=0, sticky="w", pady=(10, 0))
-        self.dur_var = tk.IntVar(value=60)
-        dur_sb = tk.Spinbox(
-            wrapper, from_=5, to=480, increment=5,
-            textvariable=self.dur_var, width=6, justify="right",
-            wrap=True
-        )
-        dur_sb.grid(row=5, column=0, sticky="w")
-
-        # Buttons (aligned right)
-        btns = ttk.Frame(wrapper)
-        btns.grid(row=6, column=0, columnspan=8, sticky="e", pady=(14,0))
-        ttk.Button(btns, text="Cancel", command=self.destroy).grid(row=0,column=0, padx=(0,8))
-        ttk.Button(btns, text="Save", command=lambda: self._save(on_save)).grid(row=0, column=1)
-
-        # Stretch layout
-        for c in range(8):
-            wrapper.columnconfigure(c, weight=1)
-
-        # Keyboard shortcuts
-        self.bind("<Return>", lambda _e: self._save(on_save))
-        self.bind("<Escape>", lambda _e: self.destroy())
-        title_entry.focus_set()
-
-    def _save(self, on_save):
-        title = self.title_var.get().strip()
-        if not title:
-            messagebox.showerror("Error", "Title cannot be empty.")
-            return
-        
-        try:
-            h12 = int(self.hour_var.get())
-            m = int(self.minute_var.get())
-            d = int(self.dur_var.get())
-            ap = self.ampm_var.get()
-        except ValueError:
-            messagebox.showerror("Error", "Invalid time or duration.")
-            return
-        
-        if not(1 <= h12 <= 12) or m not in (0, 15, 30, 45) or d <= 0:
-            messagebox.showerror("Invalid Time", "Hour must be between 1 and 12, minute 0/15/30/45, duration positive.")
-            return
-        
-        if d <= 0:
-            messagebox.showerror("Invalid Duration", "Duration must be positive.")
-            return
-        
-        h24 = self._to_24h(h12, ap)
-        on_save(title, h24, m, d)
-        self.destroy()
-
-    def _to_24h(self, h12: int, ampm: str) -> int:
-        ampm = (ampm or "AM").upper()
-        h12 = int(h12)
-        if ampm == "AM":
-            return 0 if h12 == 12 else h12
-        else:
-            return 12 if h12 == 12 else h12 + 12
-
-class EditEventDialog(tk.Toplevel):
-    def __init__(self, parent, event_row, on_update, on_delete):
-        super().__init__(parent)
+        self.transient(parent)
         self.title("Edit Event")
         self.resizable(False, False)
-        self.transient(parent.winfo_toplevel())
-        self.grab_set()
+        self.result = None
 
-        (eid, title, start_iso, dur) = event_row
-        start_dt = datetime.strptime(start_iso, "%Y-%m-%d %H:%M")
+        self.bind("<Escape>", lambda _e: self._cancel())
 
-        #same layout as AddEventDialog but prepopped
+        frm = ttk.Frame(self, padding=14)
+        frm.pack(fill="both", expand=True)
 
-        wrapper = ttk.Frame(self, padding=14)
-        wrapper.pack(fill="both", expand=True)
-
-        ttk.Label(wrapper, text="Title").grid(row=0, column=0, sticky="w")
+        # Title
+        ttk.Label(frm, text="Title").grid(row=0, column=0, sticky="w")
         self.title_var = tk.StringVar(value=title)
-        title_entry = ttk.Entry(wrapper, textvariable = self.title_var, width=40)
-        title_entry.grid(row=1, column=0, columnspan=6, sticky="ew", pady=(2,10))
+        ttk.Entry(frm, textvariable=self.title_var, width=36).grid(row=1, column=0, columnspan=3, sticky="ew", pady=(2, 10))
 
-        hr12 = start_dt.hour % 12 or 12
-        ampm = "AM" if start_dt.hour < 12 else "PM"
+        # Time + AM/PM
+        ttk.Label(frm, text="Time (HH:MM)").grid(row=2, column=0, sticky="w")
+        self.time_var = tk.StringVar(value=time_12h)
+        ttk.Entry(frm, textvariable=self.time_var, width=8).grid(row=3, column=0, sticky="w", pady=(2, 10))
 
-        self.hour_var = tk.IntVar(value=hr12)
-        self.minute_var = tk.IntVar(value=start_dt.minute)
-        self.ampm_var = tk.StringVar(value = ampm)
-        self.dur_var = tk.IntVar(value=dur)
+        ttk.Label(frm, text="AM/PM").grid(row=2, column=1, sticky="w", padx=(10, 0))
+        self.ampm_var = tk.StringVar(value=(ampm or "AM").upper())
+        ampm_box = ttk.Combobox(frm, textvariable=self.ampm_var, values=["AM", "PM"], width=5, state="readonly")
+        ampm_box.grid(row=3, column=1, sticky="w", padx=(10, 0), pady=(2, 10))
 
-        # time row
-        tk.Spinbox(wrapper, from_=1, to=12, textvariable=self.hour_var, width=4).grid(row=2, column=0)
-        ttk.Label(wrapper, text=":").grid(row=2, column=1)
-        tk.Spinbox(wrapper, values=(0, 15, 30, 45), textvariable=self.minute_var, width=4).grid(row=2, column=2)
-        tk.Spinbox(wrapper, values=("AM", "PM"), textvariable=self.ampm_var, width=4).grid(row=2, column=3, padx=(8,0))
+        # Duration
+        ttk.Label(frm, text="Duration (minutes)").grid(row=2, column=2, sticky="w", padx=(10, 0))
+        self.dur_var = tk.StringVar(value=str(duration))
+        ttk.Entry(frm, textvariable=self.dur_var, width=8).grid(row=3, column=2, sticky="w", padx=(10, 0), pady=(2, 10))
 
-        ttk.Label(wrapper, text="Duration (minutes)").grid(row=3, column=0, sticky="w", pady=(10,0))
-        tk.Spinbox(wrapper, from_=5, to=480, increment=5, textvariable=self.dur_var, width=6).grid(row=4, column=0)
+        # Buttons
+        btns = ttk.Frame(frm)
+        btns.grid(row=4, column=0, columnspan=3, sticky="e", pady=(6, 0))
+        ttk.Button(btns, text="Delete", command=self._delete).pack(side="left")
+        ttk.Button(btns, text="Cancel", command=self._cancel).pack(side="right", padx=(6, 0))
+        ttk.Button(btns, text="Save", command=self._save).pack(side="right")
 
-        btns = ttk.Frame(wrapper)
-        btns.grid(row=5, column=0, columnspan=6, sticky="e", pady=(14,0))
-        ttk.Button(btns, text="Delete", command=lambda: (on_delete(eid), self.destroy())).pack(side="left")
-        ttk.Button(btns, text="Save", command=lambda: self._save(eid, on_update)).pack(side="right")
+        frm.columnconfigure(0, weight=1)
 
-        title_entry.focus_set()
+        self._center(parent)
+        self.grab_set()
+        self.focus()
 
-    def _to_24h(self, h12, ampm):
-        return 0 if h12 == 12 and ampm == "AM" else (h12 if ampm == "AM" else (12 if h12 == 12 else h12+12))
-    
-    def _save(self, eid, on_update):
-        title = self.title_var.get().strip()
-        h24 = self._to_24h(int(self.hour_var.get()), self.ampm_var.get())
-        m = int(self.minute_var.get())
-        d = int(self.dur_var.get())
-        today = date.today().strftime("%Y-%m-%d")
-        start_iso = f"{today} {h24:02d}:{m:02d}"
-        on_update(eid, title, start_iso, d)
+    def _center(self, parent):
+        self.update_idletasks()
+        try:
+            px, py = parent.winfo_rootx(), parent.winfo_rooty()
+            pw, ph = parent.winfo_width(), parent.winfo_height()
+        except Exception:
+            px = py = 100; pw = ph = 300
+        w, h = self.winfo_width(), self.winfo_height()
+        x = px + (pw - w) // 2
+        y = py + (ph - h) // 2
+        self.geometry(f"+{x}+{y}")
+
+    def _delete(self):
+        if messagebox.askyesno("Delete", "Delete this event?", parent=self):
+            self.result = {"action": "delete"}
+            self.destroy()
+
+    def _cancel(self):
+        self.result = None
+        self.destroy()
+
+    def _save(self):
+        title = (self.title_var.get() or "").strip()
+        ampm = (self.ampm_var.get() or "AM").upper()
+        time_12h = (self.time_var.get() or "12:00").strip()
+        dur_txt = (self.dur_var.get() or "60").strip()
+
+        if not title:
+            messagebox.showwarning("Missing", "Title is required.", parent=self)
+            return
+
+        # Validate time HH:MM (12h)
+        try:
+            h12, m = map(int, time_12h.split(":"))
+            if not (1 <= h12 <= 12) or not (0 <= m < 60):
+                raise ValueError
+        except Exception:
+            messagebox.showerror("Invalid time", "Time must be HH:MM in 12-hour format.", parent=self)
+            return
+
+        try:
+            duration = int(dur_txt)
+            if duration <= 0:
+                raise ValueError
+        except Exception:
+            messagebox.showerror("Invalid duration", "Duration must be a positive integer.", parent=self)
+            return
+
+        self.result = {
+            "action": "save",
+            "title": title,
+            "time_12h": f"{h12:02d}:{m:02d}",
+            "ampm": ampm,
+            "duration": duration,
+        }
         self.destroy()
 
 
-
-
-
+# ---- Today Page ----
 class TodayPage(ttk.Frame):
+    """
+    Shows today's events on a 12-hour labeled timeline.
+    - Add event via button (uses the same popup flow with empty defaults)
+    - Click an event to open the EventEditor popup (Save/Delete)
+    """
     def __init__(self, parent, controller):
         super().__init__(parent)
         self.controller = controller
-        self._tick_job = None
 
-        wrapper = ttk.Frame(self, padding=12)
-        wrapper.pack(fill="both", expand=True)
+        # Header
+        header = ttk.Frame(self)
+        header.pack(fill="x", padx=12, pady=(12, 6))
 
-        #Header
-        self.date_str = tk.StringVar(value=datetime.now().strftime("%A, %B %d, %Y"))
-        top = ttk.Frame(wrapper)
-        top.pack(fill="x")
-        ttk.Label(top, textvariable=self.date_str, font=("", 11, "bold")).pack(side="left")
+        ttk.Label(header, text="Today's Schedule").pack(side="left")
 
-        ttk.Button(
-            top,
-            text="Add Event",
-            command=self.open_add_dialog).pack(side="right")
-        
-        # Timeline
-        self.timeline = Timeline(wrapper, pixels_per_hour=60)
-        self.timeline.pack(fill="both", expand=True, pady=(8,0))
+        ttk.Button(header, text="Add Event",
+                   command=self._add_event).pack(side="right", padx=(4, 0))
+        ttk.Button(header, text="Back",
+                   command=lambda: controller.show_frame("HomePage")).pack(side="right")
 
-        # Footer navigation
-        ttk.Button(wrapper,
-                   text="Back to Home",
-                   command=lambda: self.controller.show_frame("HomePage")).pack(anchor="e", pady=(8,0))
-        
-    # Lifecycle
+        # 12-hour timeline
+        self.timeline = Timeline12h(self, pixels_per_hour=60, on_event_click=self._on_event_click)
+        self.timeline.pack(fill="both", expand=True, padx=12, pady=(0, 12))
+
+        self._today_iso = date.today().isoformat()
+
     def on_show(self):
-        self.refresh()
-        # start live updates every 30s
-        self._schedule_tick()
+        self._refresh()
 
-    def _schedule_tick(self):
-        if self._tick_job:
-            self.after_cancel(self._tick_job)
-        self.timeline.draw_nowline()
-        self._tick_job = self.after(30*1000, self._schedule_tick) # 30s interval
-
-    def _today_iso_date(self) -> str:
-        return date.today().strftime("%Y-%m-%d")
-    
-    def refresh(self):
-        # Update date header
-        self.date_str.set(datetime.now().strftime("%A, %B %d, %Y"))
-
-        username = getattr(self.controller, "current_user", None)
+    # -------- Helpers --------
+    def _refresh(self):
+        username = self.controller.current_user
         if not username:
-            self.timeline._draw_grid()
-            self.timeline.draw_nowline()
             return
-        rows = database.get_events_for_day(username, self._today_iso_date())
-        # drawingggg
-        self.timeline._draw_grid()
-        self.timeline.draw_nowline()
-        self.timeline.draw_events(rows)
-        # scroll to around "now"
-        self.timeline.scroll_to_now()
+        try:
+            rows = database.get_events_for_day(username, self._today_iso)
+            # Expecting rows of (id, title, start_iso, duration_minutes)
+        except Exception as e:
+            messagebox.showerror("Error", f"Could not load events: {e}")
+            return
 
-    # Add event
-    def open_add_dialog(self):
-        dlg = AddEventDialog(self, on_save=self._save_new_event)
+        # Convert to simple objects the timeline expects
+        class E: ...
+        events = []
+        for r in rows:
+            ev = E()
+            ev.id, ev.title, ev.start_iso, ev.duration_minutes = r
+            events.append(ev)
 
-    def _save_new_event(self, title: str, h: int, m: int, d: int):
-        username = getattr(self.controller, "current_user", None)
+        self.timeline.set_date_and_events(self._today_iso, events)
+
+        # auto-scroll to 'now'
+        now = datetime.now()
+        self.timeline.scroll_to_time(now.hour, now.minute)
+
+    def _add_event(self):
+        username = self.controller.current_user
         if not username:
-            messagebox.showerror("Error", "No user logged in.")
+            messagebox.showwarning("Not logged in", "Please log in first.")
             return
-        
-        # Building 'YYYY-MM-DD HH:MM' string
-        today = date.today().strftime("%Y-%m-%d")
-        start_iso = f"{today} {h:02d}:{m:02d}"
+
+        # empty defaults
+        dlg = EventEditor(self, title="", time_12h="09:00", ampm="AM", duration=60)
+        self.wait_window(dlg)
+        if not dlg.result or dlg.result["action"] != "save":
+            return
+
+        # Convert 12h -> 24h and add
+        t12 = dlg.result["time_12h"]
+        ampm = dlg.result["ampm"]
+        hh12, mm = map(int, t12.split(":"))
+        h24 = hh12 % 12
+        if ampm == "PM":
+            h24 += 12
+        if ampm == "AM" and hh12 == 12:
+            h24 = 0
+        start_iso = f"{self._today_iso} {h24:02d}:{mm:02d}"
 
         try:
-            database.add_event(username, title, start_iso, duration_minutes=d)
+            database.add_event(username, dlg.result["title"].strip(), start_iso, int(dlg.result["duration"]))
+            self._refresh()
         except Exception as e:
-            messagebox.showerror("Error", f"Failed to add event: {e}")
-            return
-        
-        # refresh timeline
-        self.refresh()
-        messagebox.showinfo("Success", "Event added.")
+            messagebox.showerror("Could not add", f"{e}")
 
-    def open_event_dialog(self, event_id: int):
-        username = getattr(self.controller, "current_user", None)
-        if not username:
+    def _on_event_click(self, event_id: int):
+        # Load the event
+        try:
+            row = database.get_event(event_id)  # (id, username, title, start_iso, duration_minutes)
+            if not row:
+                messagebox.showerror("Not found", "Event no longer exists.")
+                return
+            _, _, title, start_iso, duration = row
+        except Exception as e:
+            messagebox.showerror("Error", f"Could not load event: {e}")
             return
-        # get event row from db
-        rows = database.get_events_for_day(username, self._today_iso_date())
-        row = next((r for r in rows if r[0] == event_id), None)
-        if not row:
+
+        # Prefill as 12h
+        date_iso, hm = start_iso.split(" ")
+        h24, m = map(int, hm.split(":"))
+        if h24 == 0:        h12, ampm = 12, "AM"
+        elif h24 < 12:      h12, ampm = h24, "AM"
+        elif h24 == 12:     h12, ampm = 12, "PM"
+        else:               h12, ampm = h24 - 12, "PM"
+
+        dlg = EventEditor(self, title=title, time_12h=f"{h12:02d}:{m:02d}", ampm=ampm, duration=duration)
+        self.wait_window(dlg)
+        if not dlg.result:
             return
-        
-        def do_update(eid, title, start_iso, dur):
+
+        if dlg.result["action"] == "delete":
             try:
-                database.update_event(eid, title, start_iso, dur)
-                self.refresh()
+                if database.delete_event(event_id):
+                    self._refresh()
+                else:
+                    messagebox.showwarning("Not deleted", "Event may not exist.")
             except Exception as e:
-                messagebox.showerror("Error", f"Could not update: {e}")
+                messagebox.showerror("Could not delete", f"{e}")
+            return
 
-        def do_delete(eid):
+        if dlg.result["action"] == "save":
+            # 12h -> 24h and update
+            t12 = dlg.result["time_12h"]
+            ampm = dlg.result["ampm"]
+            hh12, mm = map(int, t12.split(":"))
+            h24 = hh12 % 12
+            if ampm == "PM":
+                h24 += 12
+            if ampm == "AM" and hh12 == 12:
+                h24 = 0
+            new_start_iso = f"{date_iso} {h24:02d}:{mm:02d}"
+
             try:
-                database.delete_event(eid)
-                self.refresh()
+                ok = database.update_event(
+                    event_id,
+                    title=dlg.result["title"].strip(),
+                    start_iso=new_start_iso,
+                    duration_minutes=int(dlg.result["duration"]),
+                )
+                if not ok:
+                    messagebox.showwarning("No change", "Nothing was updated.")
+                self._refresh()
             except Exception as e:
-                messagebox.showerror("Error", f"Could not delete: {e}")
-        
-        EditEventDialog(self, row, do_update, do_delete)
-
+                messagebox.showerror("Could not update", f"{e}")

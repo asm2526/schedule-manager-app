@@ -142,6 +142,20 @@ def get_events_for_day(username: str, date_iso: str) -> list[tuple]:
         )
         return cur.fetchall()
 
+# In database.py (root), add below get_events_for_day(...)
+def get_event(event_id: int):
+    """
+    Return a single event by id as a tuple:
+    (id, username, title, start_iso, duration_minutes) or None if not found.
+    """
+    with _get_conn() as conn:
+        cur = conn.cursor()
+        cur.execute(
+            "SELECT id, username, title, start_iso, duration_minutes FROM events WHERE id = ?",
+            (event_id,)
+        )
+        return cur.fetchone()
+
 def update_event(event_id: int, title: str, start_iso: str, duration_minutes: int) -> None:
     with _get_conn() as conn:
         conn.execute(
