@@ -45,20 +45,28 @@ class Timeline(ttk.Frame):
         self._draw_grid()
         self._nowline_id = None
 
+        self._bind_resize()
+
     def _draw_grid(self):
         self.canvas.delete(self.bg_tag)
         left_pad = 60
-        width = 480
+        width = max(480, int(self.canvas.winfo_width() or 480))
 
         for h in range(25):
             y = h * self.PPH
-            self.canvas.create_line(left_pad, y, width, y, fill="#ddd", tags=self.bg_tag)
+            self.canvas.create_line(left_pad, y, width, y, fill="#d9d9d9", tags=self.bg_tag)
             if h < 24:
-                label = f"{{h%24 :02d}}:00"
+                label = f"{h:02d}:00"
                 self.canvas.create_text(8, y + 2, anchor="nw", text=label, tags=self.bg_tag)
 
         # Vertical seperator
         self.canvas.create_line(left_pad, 0, left_pad, self.total_height, fill="#ddd", tags=self.bg_tag)
+
+    def _on_resize(self, _event=None):
+        self._draw_grid()
+
+    def _bind_resize(self):
+        self.canvas.bind("<Configure>", self._on_resize)
 
     def draw_nowline(self, when: datetime | None = None):
         # remove old
@@ -122,16 +130,17 @@ class AddEventDialog(tk.Toplevel):
         super().__init__(parent)
         self.title("Add Event")
         self.resizable(False, False)
-        self.transient(parent)
+        self.transient(parent.winfo_toplevel())
         self.grab_set() # modal
 
         wrapper = ttk.Frame(self, padding=16)
         wrapper.pack(fill="both", expand=True)
 
         #title
-        ttk.Label(wrapper, text="Event Title").gird(row=0, column=0, sticky="w")
+        ttk.Label(wrapper, text="Event Title").grid(row=0, column=0, sticky="w")
         self.title_var = tk.StringVar()
-        self.Entity(wrapper, textvariable=self.title_var, width=32). grid(row=1, column=0, columnspan=3, sticky="ew", pady=(2,10))
+        title_entry = ttk.Entry(wrapper, textvariable=self.title_var, width= 32)
+        title_entry.grid(row=1, column=0,columnspan=4, sticky="ew", pady=(2,10))
 
         # Time 
         ttk.Label(wrapper, text="Start Time").grid(row=2, column=0, sticky="w")
