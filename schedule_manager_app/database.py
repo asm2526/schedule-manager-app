@@ -140,3 +140,24 @@ def get_events_for_day(username: str, date_iso: str) -> list[tuple]:
             """,
             (username, date_iso),
         )
+        return cur.fetchall()
+
+def update_event(event_id: int, title: str, start_iso: str, duration_minutes: int) -> None:
+    with _get_conn() as conn:
+        conn.execute(
+            "UPDATE events SET title = ?, start_iso = ?, duration_minutes = ? WHERE id = ?",
+            (title.strip(), start_iso, int(duration_minutes), event_id)
+        )
+        conn.commit()
+
+def delete_event(event_id: int) -> None:
+    with _get_conn() as conn:
+        conn.execute("DELETE FROM events WHERE id = ?", (event_id,))
+        conn.commit()
+
+# ---- Dev smoke test --------------------------------------------------------
+if __name__ == "__main__":
+    init_db()
+    ok = verify_user("tester", "Testing123456!")
+    print("verification test:", "Success" if ok else "Failed")
+    print("DB file:", DB_FILE)

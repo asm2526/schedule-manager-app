@@ -2,7 +2,7 @@ import tkinter as tk
 from tkinter import ttk, messagebox
 
 #keep using existing root-level database.py for now
-import database
+import schedule_manager_app.database as database
 
 # styles 
 try:
