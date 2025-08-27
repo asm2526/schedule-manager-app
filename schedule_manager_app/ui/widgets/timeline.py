@@ -38,6 +38,9 @@ class Timeline12h(ttk.Frame):
         self._draw_grid()
         self._draw_now_line()  # schedules itself every minute
 
+        self.canvas.bind("<Enter>", lambda _e: self._bind_scroll())
+        self.canvas.bind("<Leave>", lambda _e: self._unbind_scroll())
+
     # ---- Public API ----
     def set_date_and_events(self, date_iso: str, events: list):
         self.date_iso = date_iso
@@ -126,3 +129,33 @@ class Timeline12h(ttk.Frame):
     def _y_from_iso(self, iso: str) -> int:
         dt = datetime.strptime(iso, "%Y-%m-%d %H:%M")
         return int((dt.hour + dt.minute / 60) * self.PPH)
+    
+    def _bind_scroll(self):
+        #windows/macos two-finger & wheel scroll
+        self.canvas.bind_all("<MouseWheel>", self._on_mousewheel)
+        # Linux x11
+        self.canvas.bind_all("<Button-4>", self._on_linux_scroll_up)
+        self.canvas.bind_all("<Button-5>", self._on_linux_scroll_up)
+
+    def _unbind_scroll(self):
+        self.canvas.unbind_all("<MouseWheel>")
+        self.canvas.unbind_all("<Button-4>")
+        self.canvas.unbind_all("<Button-5>")
+
+    def _on_mousewheel(self, event):
+        #Normalize delta:
+        delta = event.delta or 0
+        if abs(delta) >=120:
+            units = int(-delta / 120)
+        else:
+            units = -1 if delta > 0 else (1 if delta < 0 else 0)
+        if units:
+            self.canvas.yview_scroll(units, "units")
+
+    def _on_linux_scroll_up(self, _event):
+        self.canvas.yview_scroll(-1, "units")
+
+    def _on_linux_scroll_down(self, _event):
+        self.canvas.yview_scroll(1, "units")
+
+
