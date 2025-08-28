@@ -3,6 +3,9 @@ from PySide6.QtWidgets import (
     QApplication, QMainWindow, QStackedWidget, QWidget, QVBoxLayout, QLabel, QPushButton
 )
 
+from login_page_qt import LoginPage
+
+"""
 class LoginPage(QWidget):
     def __init__(self, app):
         super().__init__()
@@ -12,6 +15,7 @@ class LoginPage(QWidget):
         btn.clicked.connect(lambda: app.show_page("HomePage"))
         layout.addWidget(btn)
         self.setLayout(layout)
+"""
 
 class HomePage(QWidget):
     def __init__(self, app):
