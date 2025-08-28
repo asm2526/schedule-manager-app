@@ -5,7 +5,8 @@ from PySide6.QtWidgets import (
 
 from login_page_qt import LoginPage
 from home_page_qt import HomePage
-
+from register_page_qt import RegisterPage
+from today_page_qt import TodayPage
 """
 class LoginPage(QWidget):
     def __init__(self, app):
@@ -28,7 +29,7 @@ class HomePage(QWidget):
         layout.addWidget(btn)
         self.setLayout(layout)
 """
-
+"""
 class TodayPage(QWidget):
     def __init__(self, app):
         super().__init__()
@@ -38,6 +39,7 @@ class TodayPage(QWidget):
         btn.clicked.connect(lambda: app.show_page("HomePage"))
         layout.addWidget(btn)
         self.setLayout(layout)
+"""
 
 class ScheduleApp(QMainWindow):
     def __init__(self):
@@ -54,6 +56,7 @@ class ScheduleApp(QMainWindow):
             "LoginPage": LoginPage(self),
             "HomePage": HomePage(self),
             "TodayPage": TodayPage(self),
+            "RegisterPage": RegisterPage(self),
         }
 
         for name, page in self.pages.items():
@@ -61,10 +64,14 @@ class ScheduleApp(QMainWindow):
 
         self.show_page("LoginPage")
 
+        self.current_user: str | None = None
+
     def show_page(self, name: str):
         page = self.pages.get(name)
         if page:
             self.stack.setCurrentWidget(page)
+
+        
 
 
 if __name__ == "__main__":

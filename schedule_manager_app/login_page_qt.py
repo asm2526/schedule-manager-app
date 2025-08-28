@@ -40,6 +40,8 @@ class LoginPage(QWidget):
     def handle_login(self):
         username = self.username_input.text().strip()
         password = self.password_input.text()
+        self.app.current_user = username
+        self.app.show_page("HomePage")
 
         if not username or not password:
             QMessageBox.warning(self, "Missing Info", "Please enter both username and password.")
