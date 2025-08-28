@@ -4,6 +4,7 @@ from PySide6.QtWidgets import (
 )
 
 from login_page_qt import LoginPage
+from home_page_qt import HomePage
 
 """
 class LoginPage(QWidget):
@@ -16,7 +17,7 @@ class LoginPage(QWidget):
         layout.addWidget(btn)
         self.setLayout(layout)
 """
-
+"""
 class HomePage(QWidget):
     def __init__(self, app):
         super().__init__()
@@ -26,6 +27,7 @@ class HomePage(QWidget):
         btn.clicked.connect(lambda:app.show_page("TodayPage"))
         layout.addWidget(btn)
         self.setLayout(layout)
+"""
 
 class TodayPage(QWidget):
     def __init__(self, app):
