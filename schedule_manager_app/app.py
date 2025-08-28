@@ -65,6 +65,11 @@ class App(tk.Tk):
 
         # Start on login
         self.show_frame("LoginPage")
+
+        self.option_add("*Entry.insertBackground", "black")
+        self.option_add("*Entry.insertwidth", 2)
+        self.option_add("*Text.insertBackground", "black")
+        self.option_add("*Text.insertWidth", 2)
         
 
     # ---------- Navigation helpers ----------

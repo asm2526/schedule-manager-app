@@ -31,8 +31,8 @@ class LoginPage(QWidget):
         layout.addWidget(login_btn)
 
         #Register Button
-        register_btn = QPushButton("Register (Not wired yet)")
-        register_btn.clicked.connect(lambda: QMessageBox.information(self, "TODO", "Hook up RegisterPage"))
+        register_btn = QPushButton("Register")
+        register_btn.clicked.connect(lambda: self.app.show_page("RegisterPage"))
         layout.addWidget(register_btn)
 
         self.setLayout(layout)
