@@ -1,5 +1,5 @@
 from PySide6.QtWidgets import (
-    QWidget, QVBoxLayout, QLabel, QLineEdit, QPushButton, QMessageBox
+    QWidget, QVBoxLayout, QLabel, QLineEdit, QPushButton, QMessageBox, QCheckBox
 )
 from PySide6.QtCore import Qt
 import database
@@ -35,6 +35,11 @@ class RegisterPage(QWidget):
         self.confirm_input.setEchoMode(QLineEdit.Password)
         layout.addWidget(self.confirm_input)
 
+        # new: show password checkbox
+        self.show_password_cb = QCheckBox("Show Passwords")
+        self.show_password_cb.toggled.connect(self.toggle_passwords)
+        layout.addWidget(self.show_password_cb)
+
         #Register button
         register_btn = QPushButton("Register")
         register_btn.clicked.connect(self.handle_register)
@@ -52,6 +57,12 @@ class RegisterPage(QWidget):
         self.password_input.returnPressed.connect(self.handle_register)
         self.confirm_input.returnPressed.connect(self.handle_register)     
         register_btn.setDefault(True)
+
+    def toggle_passwords(self, checked: bool):
+        """Toggle between showing and hiding both password fields"""
+        mode = QLineEdit.Normal if checked else QLineEdit.Password
+        self.password_input.setEchoMode(mode)
+        self.confirm_input.setEchoMode(mode)
 
     def handle_register(self):
         """Attempt to register a new user."""

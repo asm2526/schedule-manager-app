@@ -1,5 +1,5 @@
 from PySide6.QtWidgets import (
-    QWidget, QVBoxLayout, QLabel, QLineEdit, QPushButton, QMessageBox, 
+    QWidget, QVBoxLayout, QLabel, QLineEdit, QPushButton, QMessageBox, QCheckBox
 )
 from PySide6.QtCore import Qt
 import database
@@ -29,6 +29,11 @@ class LoginPage(QWidget):
         self.password_input.setEchoMode(QLineEdit.Password) #hide text
         layout.addWidget(self.password_input)
 
+        # new: show password checkbox
+        self.show_password_cb = QCheckBox("Show Password")
+        self.show_password_cb.toggled.connect(self.toggle_password)
+        layout.addWidget(self.show_password_cb)
+
         #Login button
         login_btn = QPushButton("Login")
         login_btn.clicked.connect(self.handle_login)
@@ -45,6 +50,13 @@ class LoginPage(QWidget):
         self.username_input.returnPressed.connect(self.handle_login)
         self.password_input.returnPressed.connect(self.handle_login)
         login_btn.setDefault(True)
+
+    def toggle_password(self, checked: bool):
+        """Toggle between showing and hiding the password field"""
+        if checked:
+            self.password_input.setEchoMode(QLineEdit.Normal)
+        else:
+            self.password_input.setEchoMode(QLineEdit.Password)
 
     def handle_login(self):
         """Validate login credentials"""
