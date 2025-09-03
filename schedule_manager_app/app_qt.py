@@ -1,81 +1,70 @@
+"""New skeleton code to begin new implementation"""
+# app_qt.py
 import sys
-from PySide6.QtWidgets import (
-    QApplication, QMainWindow, QStackedWidget, QWidget, QVBoxLayout, QLabel, QPushButton
-)
+from PySide6.QtWidgets import QApplication, QMainWindow, QStackedWidget
+from PySide6.QtCore import Qt
 
 from login_page_qt import LoginPage
-from home_page_qt import HomePage
-from register_page_qt import RegisterPage
-from today_page_qt import TodayPage
-"""
-class LoginPage(QWidget):
+
+# placeholders for now
+from PySide6.QtWidgets import QWidget, QLabel, QVBoxLayout
+
+class RegisterPage(QWidget):
+    def __init__(self,app):
+        super().__init__()
+        layout = QVBoxLayout()
+        layout.addWidget(QLabel("Register Page (placeholder)"))
+        self.setLayout(layout)
+
+class CalendarPage(QWidget):
     def __init__(self, app):
         super().__init__()
         layout = QVBoxLayout()
-        layout.addWidget(QLabel("Login Page"))
-        btn = QPushButton("Go to Home")
-        btn.clicked.connect(lambda: app.show_page("HomePage"))
-        layout.addWidget(btn)
+        layout.addWidget(QLabel("Calendar Page (placehoder)"))
         self.setLayout(layout)
-"""
-"""
-class HomePage(QWidget):
-    def __init__(self, app):
-        super().__init__()
-        layout = QVBoxLayout()
-        layout.addWidget(QLabel("Home Page"))
-        btn = QPushButton("Go to Today")
-        btn.clicked.connect(lambda:app.show_page("TodayPage"))
-        layout.addWidget(btn)
-        self.setLayout(layout)
-"""
-"""
-class TodayPage(QWidget):
-    def __init__(self, app):
-        super().__init__()
-        layout = QVBoxLayout()
-        layout.addWidget(QLabel("Today Page (Timeline will go here)"))
-        btn = QPushButton("Back to Home")
-        btn.clicked.connect(lambda: app.show_page("HomePage"))
-        layout.addWidget(btn)
-        self.setLayout(layout)
-"""
 
 class ScheduleApp(QMainWindow):
+    """Main app window managing all pages"""
+
     def __init__(self):
         super().__init__()
-        self.setWindowTitle("Schedule Manager (Qt)")
+        self.setWindowTitle("Schedule Manager")
+        self.resize(1000, 700) # resizable by default
 
+        # Track the logged-in user
+        self.current_user: str | None = None
+
+        #page container
         self.stack = QStackedWidget()
         self.setCentralWidget(self.stack)
-
-        self.resize(600,400)
 
         # Instantiate pages
         self.pages = {
             "LoginPage": LoginPage(self),
-            "HomePage": HomePage(self),
-            "TodayPage": TodayPage(self),
             "RegisterPage": RegisterPage(self),
+            "CalendarPage": CalendarPage(self),
         }
 
-        for name, page in self.pages.items():
+        for page in self.pages.values():
             self.stack.addWidget(page)
 
         self.show_page("LoginPage")
 
-        self.current_user: str | None = None
-
     def show_page(self, name: str):
+        """Switch to a page by name if it exists, and refresh if supported"""
         page = self.pages.get(name)
         if page:
             self.stack.setCurrentWidget(page)
-
-        
-
+            if hasattr(page, "refresh"):
+                page.refresh()
 
 if __name__ == "__main__":
     app = QApplication(sys.argv)
+
+    #Enable high DPI scaling + strackpad/mousewheel smoothness
+    app.setAttribute(Qt.AA_EnableHighDpiScaling, True)
+    app.setStyle("Fusion")  # modern look
+
     window = ScheduleApp()
     window.show()
     sys.exit(app.exec())
