@@ -59,7 +59,7 @@ def init_db() -> None:
                     username TEXT NOT NULL,
                     title TEXT NOT NULL,
                     start_iso TEXT NOT NULL, -- ISO 8601 datetime string
-                    duration_minutes INTEGER NOT NULL DEFAULT 60,
+                    end_iso TEXT NOT NULL DEFAULT 60,
                     created_at TEXT NOT NULL DEFAULT (datetime('now', 'localtime')),
                     FOREIGN KEY (username) REFERENCES users(username)
                     )
@@ -98,17 +98,17 @@ def verify_user(username: str, password: str) -> bool:
         return False
     return row[0] == hash_password(password)
 
-def add_event(username: str, title: str, start_iso: str, duration_minutes: int = 60) -> bool:
+def add_event(username: str, title: str, start_iso: str, end_iso: int = 60) -> bool:
     """ Add a single event for a given user
     - start_iso 'YYY-MM-DD HH:MM' (local time)
     REturns the new event ID on success"""
-    if not username or not title or not start_iso:
+    if not username or not title or not start_iso or not end_iso:
         raise ValueError("Missing required fields")
     with _get_conn() as conn:
         cur = conn.cursor()
         cur.execute(
-            " INSERT INTO events (username, title, start_iso, duration_minutes) VALUES (?, ?, ?, ?)",
-            (username, title, start_iso, duration_minutes)
+            " INSERT INTO events (username, title, start_iso, end_iso) VALUES (?, ?, ?, ?)",
+            (username, title, start_iso, end_iso)
         )
         conn.commit()
         return cur.lastrowid
@@ -117,7 +117,7 @@ def get_event_by_id(event_id: int):
     with _get_conn() as conn:
         cur = conn.cursor()
         cur.execute(
-            "SElECT id, username, title, start_iso, duration_minutes, created_at "
+            "SElECT id, username, title, start_iso, end_iso, created_at "
             "FROM events WHERE id = ?",
             (event_id,)
         )
@@ -126,13 +126,13 @@ def get_event_by_id(event_id: int):
 def get_events_for_day(username: str, date_iso: str) -> list[tuple]:
     """
     Fetch events for a user on a specific day (date_iso: 'YYYY-MM-DD'), ordered by start time.
-    Returns a list of rows: (id, title, start_iso, duration_minutes)
+    Returns a list of rows: (id, title, start_iso, end_iso)
     """
     with _get_conn() as conn:
         cur = conn.cursor()
         cur.execute(
             """
-            SELECT id, title, start_iso, duration_minutes
+            SELECT id, title, start_iso, end_iso
             FROM events
             WHERE username = ?
               AND substr(start_iso, 1, 10) = ?
@@ -146,21 +146,21 @@ def get_events_for_day(username: str, date_iso: str) -> list[tuple]:
 def get_event(event_id: int):
     """
     Return a single event by id as a tuple:
-    (id, username, title, start_iso, duration_minutes) or None if not found.
+    (id, username, title, start_iso, end_iso) or None if not found.
     """
     with _get_conn() as conn:
         cur = conn.cursor()
         cur.execute(
-            "SELECT id, username, title, start_iso, duration_minutes FROM events WHERE id = ?",
+            "SELECT id, username, title, start_iso, end_iso FROM events WHERE id = ?",
             (event_id,)
         )
         return cur.fetchone()
 
-def update_event(event_id: int, title: str, start_iso: str, duration_minutes: int) -> None:
+def update_event(event_id: int, title: str, start_iso: str, end_iso: int) -> None:
     with _get_conn() as conn:
         conn.execute(
-            "UPDATE events SET title = ?, start_iso = ?, duration_minutes = ? WHERE id = ?",
-            (title.strip(), start_iso, int(duration_minutes), event_id)
+            "UPDATE events SET title = ?, start_iso = ?, end_iso = ? WHERE id = ?",
+            (title.strip(), start_iso, end_iso, event_id)
         )
         conn.commit()
 
