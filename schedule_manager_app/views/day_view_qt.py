@@ -44,13 +44,25 @@ class DayView(QWidget):
         for hour in range(24):
             y = hour * 60 * self.pixels_per_minute
             label = QTime(hour, 0).toString("h AP")
+
+            # label
             text = self.scene.addText(label)
-            text.setDefaultTextColor(Qt.gray)
-            text.setPos(5, y)
-        # vertical divider
-        self.scene.addLine(self.time_column_width, 0,
-                           self.time_column_width, 24 * 60 * self.pixels_per_minute,
-                           QPen(QColor("gray")))
+            text.setDefaultTextColor(QColor("#AAAAAA")) # ligh gray
+            text.setPos(5, y - 6) # adjust vertically
+
+            # subtle horizontal line across calendar
+            self.scene.addLine(
+                self.time_column_width, y,
+                self.time_column_width + 600, y,
+                QPen(QColor("#333333"))
+            )
+        
+        # Vertical divider for time and events
+        self.scene.addLine(
+            self.time_column_width, 0,
+            self.time_column_width, 24 * 60 * self.pixels_per_minute,
+            QPen(QColor("#444444"))
+        )
 
     def load_events(self, events: list[tuple]):
         """
@@ -69,40 +81,49 @@ class DayView(QWidget):
             start_min = start_qt.hour() * 60 + start_qt.minute()
             end_min = end_qt.hour() * 60 + end_qt.minute()
             duration = max(1, end_min - start_min)
-            blocks.append((ev_id, title, start, end, start_min, duration))
+            blocks.append((ev_id, title, start, end, start_min, end_min, duration))
 
-        # naive overlap: put each event in its own column if overlapping
-        columns = []
-        for block in sorted(blocks, key=lambda x: x[4]):
-            placed = False
-            for col in columns:
-                if col[-1][4] + col[-1][5] <= block[4]:
-                    col.append(block)
-                    placed = True
-                    break
-            if not placed:
-                columns.append([block])
+        blocks.sort(key = lambda x: x[4])
 
-        col_width = 300 / max(1, len(columns))  # width for events
+        clusters = []
+        current_cluster = []
+        current_end = -1
 
-        for col_index, col in enumerate(columns):
-            for ev_id, title, start, end, start_min, duration in col:
-                x = self.time_column_width + col_index * col_width
+        # current cluster overlapping events
+        for block in blocks:
+            if not current_cluster or block[4] < current_end:
+                current_cluster.append(block)
+                current_end = max(current_end, block[5])
+            else:
+                clusters.append(current_cluster)
+                current_cluster = [block]
+                current_end = block[5]
+        if current_cluster:
+            clusters.append(current_cluster)
+
+        # draw clusters with equal width splits
+        total_width = 600
+        for cluster in clusters:
+            cluster_size = len(cluster)
+            col_width = total_width / cluster_size
+            for i, (ev_id, title, start, end, start_min, end_min, duration) in enumerate(cluster):
+                x = self.time_column_width + i * col_width
                 y = start_min * self.pixels_per_minute
                 h = duration * self.pixels_per_minute
 
-                # ✅ Use EventBox instead of plain QGraphicsRectItem
                 event_box = EventBox(ev_id, QRectF(x, y, col_width, h))
-                event_box.setBrush(Qt.cyan)
-                event_box.setPen(QPen(QColor("black")))
+                event_box.setBrush(QColor("#00E5FF"))
+                event_box.setPen(QPen(QColor("#222222")))
                 self.scene.addItem(event_box)
 
                 text = QGraphicsTextItem(f"{title}\n{start} - {end}")
                 text.setDefaultTextColor(Qt.black)
-                text.setPos(x + 5, y + 5)
+                text.setTextWidth(col_width - 6)
+                text.setPos(x+5, y+5)
                 self.scene.addItem(text)
 
-        self.scene.setSceneRect(0, 0, 600, 24 * 60 * self.pixels_per_minute)
+        self.scene.setSceneRect(0,0,self.time_column_width + total_width, 24 * 60 * self.pixels_per_minute)
+
 
     def _parse_time(self, time_str: str) -> QTime:
         try:
