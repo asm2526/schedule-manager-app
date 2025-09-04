@@ -56,14 +56,29 @@ class DayView(QWidget):
         events = [(id, title, start, end), ...]
         start/end = "hh:mm AM/PM"
         """
+
+        for row in range(24):
+            self.table.setItem(row, 1, QTableWidgetItem(""))
         self.table.clearContents()
+
+        for hour in range(24):
+            label_time = QTime(hour,0).toString("h AP")
+            self.table.setItem(hour, 0, QTableWidgetItem(label_time))
 
         for ev_id, title, start, end in events:
             # For now, just show the event on the row for its start hour
             start_hour = self._parse_time(start).hour()
-            item = QTableWidgetItem(f"{start} - {end} | {title}")
-            item.setData(Qt.UserRole, ev_id)
-            self.table.setItem(start_hour, 1, item)
+            end_hour = self._parse_time(end).hour()
+
+            for row in range(start_hour, end_hour + 1):
+                # display full title only at the start row
+                if row == start_hour:
+                    item = QTableWidgetItem(f"{start} - {end} | {title}")
+                else:
+                    item = QTableWidgetItem(f"... {title}")
+                
+                item.setData(Qt.UserRole, ev_id)
+                self.table.setItem(row, 1, item)
 
     def _handle_double_click(self, row, col):
         item = self.table.item(row, col)
