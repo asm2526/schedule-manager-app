@@ -1,10 +1,13 @@
 # views/day_view_qt.py
 from PySide6.QtWidgets import QWidget, QVBoxLayout, QLabel, QTableWidget, QTableWidgetItem, QAbstractItemView
-from PySide6.QtCore import Qt, QTime
+from PySide6.QtCore import Qt, QTime, Signal
 
 
 class DayView(QWidget):
     """UI widget for displaying one day's schedule in a 24-hour timeline."""
+
+    # new signal emitted when user double-clicks an event
+    eventDoubleClicked = Signal(int) # event id
 
     def __init__(self, parent=None, date=None):
         super().__init__(parent)
@@ -34,6 +37,8 @@ class DayView(QWidget):
             label_time = QTime(hour, 0).toString("h AP")  # "12 AM", "1 AM", etc.
             self.table.setItem(hour, 0, QTableWidgetItem(label_time))
 
+        self.table.cellDoubleClicked.connect(self._handle_double_click)
+        
         layout.addWidget(self.table)
         self.setLayout(layout)
 
@@ -59,6 +64,14 @@ class DayView(QWidget):
             item = QTableWidgetItem(f"{start} - {end} | {title}")
             item.setData(Qt.UserRole, ev_id)
             self.table.setItem(start_hour, 1, item)
+
+    def _handle_double_click(self, row, col):
+        item = self.table.item(row, col)
+        if not item:
+            return
+        event_id = item.data(Qt.UserRole)
+        if event_id:
+            self.eventDoubleClicked.emit(event_id)
 
     def _parse_time(self, time_str: str) -> QTime:
         """Convert 'hh:mm AM/PM' into QTime safely."""

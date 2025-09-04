@@ -1,8 +1,8 @@
-# calendar_page_qt.py
 from PySide6.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout, QPushButton, QLabel, QCalendarWidget
 from PySide6.QtCore import QDate
 import database
-from views.day_view_qt import DayView   # ✅ NEW
+from views.day_view_qt import DayView
+from event_dialog_qt import EventDialog
 
 
 class CalendarPage(QWidget):
@@ -42,6 +42,9 @@ class CalendarPage(QWidget):
 
         self.switch_view("month")
 
+    # ------------------------------------------------------
+    # VIEW SWITCHING
+    # ------------------------------------------------------
     def switch_view(self, view_type: str):
         self.current_view = view_type
         if view_type == "month":
@@ -62,18 +65,78 @@ class CalendarPage(QWidget):
 
     def show_day_view(self):
         """Use DayView widget and load events from DB."""
-        day_view = DayView(self, self.current_date)
-        # Fetch events for this date
+        self.day_view = DayView(self, self.current_date)   # ✅ FIXED: store reference
+        self.day_view.eventDoubleClicked.connect(self.edit_event)  # ✅ FIXED: connect signal
+
         username = self.app.current_user
         if username:
             date_str = self.current_date.toString("yyyy-MM-dd")
             events = database.get_events_for_day(username, date_str)
-            day_view.load_events(events)
-        self.replace_content(day_view)
+            self.day_view.load_events(events)
 
+        self.replace_content(self.day_view)
+
+    # ------------------------------------------------------
+    # EVENT HANDLING
+    # ------------------------------------------------------
     def add_event(self):
-        print("TODO: Hook EventDialog here")
+        """Open EventDialog to add a new event for the current date."""
+        if not self.app.current_user:
+            return
 
+        dlg = EventDialog(self, date=self.current_date.toString("yyyy-MM-dd"))
+        if dlg.exec():
+            data = dlg.get_data()
+            if not data["title"]:
+                return
+            database.add_event(
+                self.app.current_user,
+                data["title"],
+                data["date"],
+                data["start"],
+                data["end"],
+            )
+            self.refresh_day_view()   # ✅ FIXED: refresh after add
+
+    def edit_event(self, event_id: int):
+        """Open EventDialog to edit/delete an event."""
+        ev = database.get_event(event_id)
+        if not ev:
+            return
+
+        _, _, title, date, start, end = ev
+
+        dlg = EventDialog(self, title, date, start, end, event_id=event_id)
+        if dlg.exec():
+            data = dlg.get_data()
+            if data["deleted"]:
+                database.delete_event(event_id)
+            else:
+                if not data["title"]:
+                    return
+                database.update_event(
+                    event_id,
+                    data["title"],
+                    data["date"],
+                    data["start"],
+                    data["end"],
+                )
+            self.refresh_day_view()   # ✅ FIXED: refresh after edit/delete
+
+    def refresh_day_view(self):
+        """Reload events into the current DayView."""
+        if not hasattr(self, "day_view"):
+            return
+        username = self.app.current_user
+        if not username:
+            return
+        date_str = self.current_date.toString("yyyy-MM-dd")   # ✅ FIXED: corrected format
+        events = database.get_events_for_day(username, date_str)
+        self.day_view.load_events(events)
+
+    # ------------------------------------------------------
+    # HELPERS
+    # ------------------------------------------------------
     def on_date_selected(self):
         cal: QCalendarWidget = self.content
         self.current_date = cal.selectedDate()
