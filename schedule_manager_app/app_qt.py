@@ -6,24 +6,19 @@ from PySide6.QtCore import Qt
 
 from login_page_qt import LoginPage
 from register_page_qt import RegisterPage
+from calendar_page_qt import CalendarPage
 
 # placeholders for now
 from PySide6.QtWidgets import QWidget, QLabel, QVBoxLayout
-"""
-class RegisterPage(QWidget):
-    def __init__(self,app):
-        super().__init__()
-        layout = QVBoxLayout()
-        layout.addWidget(QLabel("Register Page (placeholder)"))
-        self.setLayout(layout)
-"""
 
+"""
 class CalendarPage(QWidget):
     def __init__(self, app):
         super().__init__()
         layout = QVBoxLayout()
         layout.addWidget(QLabel("Calendar Page (placehoder)"))
         self.setLayout(layout)
+"""
 
 class ScheduleApp(QMainWindow):
     """Main app window managing all pages"""
