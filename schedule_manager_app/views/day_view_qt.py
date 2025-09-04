@@ -1,99 +1,114 @@
-# views/day_view_qt.py
-from PySide6.QtWidgets import QWidget, QVBoxLayout, QLabel, QTableWidget, QTableWidgetItem, QAbstractItemView
-from PySide6.QtCore import Qt, QTime, Signal
+from PySide6.QtWidgets import QWidget, QVBoxLayout, QLabel, QGraphicsView, QGraphicsScene, QGraphicsRectItem, QGraphicsTextItem
+from PySide6.QtCore import Qt, QTime, QRectF, Signal
+from PySide6.QtGui import QPen, QColor
+
+
+# ✅ NEW: EventBox subclass to emit double-click signal
+class EventBox(QGraphicsRectItem):
+    def __init__(self, event_id, rect, parent=None):
+        super().__init__(rect)
+        self.event_id = event_id
+        self.setAcceptHoverEvents(True)
+
+    def mouseDoubleClickEvent(self, event):
+        # emit signal up to DayView’s parent (CalendarPage listens there)
+        self.scene().views()[0].parent().eventDoubleClicked.emit(self.event_id)
+        super().mouseDoubleClickEvent(event)
 
 
 class DayView(QWidget):
-    """UI widget for displaying one day's schedule in a 24-hour timeline."""
+    """Minute-precision day view with Google Calendar-style event boxes."""
 
-    # new signal emitted when user double-clicks an event
-    eventDoubleClicked = Signal(int) # event id
+    # ✅ Signal that CalendarPage connects to
+    eventDoubleClicked = Signal(int)
 
     def __init__(self, parent=None, date=None):
         super().__init__(parent)
         self.date = date
-        self.table = None
-        self._build_ui()
+        self.pixels_per_minute = 2
+        self.time_column_width = 80
+        self.scene = QGraphicsScene()
+        self.view = QGraphicsView(self.scene)
 
-    def _build_ui(self):
         layout = QVBoxLayout()
-
-        # Header with the date
         self.header = QLabel(self.date.toString("MMMM d, yyyy") if self.date else "")
         self.header.setStyleSheet("font-size: 18px; font-weight: bold;")
         layout.addWidget(self.header)
-
-        # Timeline grid (24 rows, one per hour)
-        self.table = QTableWidget(24, 2)
-        self.table.setHorizontalHeaderLabels(["Time", "Events"])
-        self.table.verticalHeader().setVisible(False)
-        self.table.setEditTriggers(QAbstractItemView.NoEditTriggers)
-        self.table.setSelectionMode(QAbstractItemView.NoSelection)
-        self.table.horizontalHeader().setStretchLastSection(True)
-        self.table.setColumnWidth(0, 80)
-
-        # Fill left column with times
-        for hour in range(24):
-            label_time = QTime(hour, 0).toString("h AP")  # "12 AM", "1 AM", etc.
-            self.table.setItem(hour, 0, QTableWidgetItem(label_time))
-
-        self.table.cellDoubleClicked.connect(self._handle_double_click)
-        
-        layout.addWidget(self.table)
+        layout.addWidget(self.view)
         self.setLayout(layout)
 
-    # ------------------------------------------------------
-    # Public API for CalendarPage (controller) to call
-    # ------------------------------------------------------
-    def set_date(self, date):
-        """Update header and internal date."""
-        self.date = date
-        self.header.setText(date.toString("MMMM d, yyyy"))
+        self._draw_time_labels()
+
+    def _draw_time_labels(self):
+        """Draw timeline column with labels and divider line."""
+        for hour in range(24):
+            y = hour * 60 * self.pixels_per_minute
+            label = QTime(hour, 0).toString("h AP")
+            text = self.scene.addText(label)
+            text.setDefaultTextColor(Qt.gray)
+            text.setPos(5, y)
+        # vertical divider
+        self.scene.addLine(self.time_column_width, 0,
+                           self.time_column_width, 24 * 60 * self.pixels_per_minute,
+                           QPen(QColor("gray")))
 
     def load_events(self, events: list[tuple]):
         """
-        Fill the table with events.
+        Draw events as EventBox items.
         events = [(id, title, start, end), ...]
-        start/end = "hh:mm AM/PM"
         """
+        # remove old EventBox items
+        for item in self.scene.items():
+            if isinstance(item, QGraphicsRectItem):
+                self.scene.removeItem(item)
 
-        for row in range(24):
-            self.table.setItem(row, 1, QTableWidgetItem(""))
-        self.table.clearContents()
-
-        for hour in range(24):
-            label_time = QTime(hour,0).toString("h AP")
-            self.table.setItem(hour, 0, QTableWidgetItem(label_time))
-
+        blocks = []
         for ev_id, title, start, end in events:
-            # For now, just show the event on the row for its start hour
-            start_hour = self._parse_time(start).hour()
-            end_hour = self._parse_time(end).hour()
+            start_qt = self._parse_time(start)
+            end_qt = self._parse_time(end)
+            start_min = start_qt.hour() * 60 + start_qt.minute()
+            end_min = end_qt.hour() * 60 + end_qt.minute()
+            duration = max(1, end_min - start_min)
+            blocks.append((ev_id, title, start, end, start_min, duration))
 
-            for row in range(start_hour, end_hour + 1):
-                # display full title only at the start row
-                if row == start_hour:
-                    item = QTableWidgetItem(f"{start} - {end} | {title}")
-                else:
-                    item = QTableWidgetItem(f"... {title}")
-                
-                item.setData(Qt.UserRole, ev_id)
-                self.table.setItem(row, 1, item)
+        # naive overlap: put each event in its own column if overlapping
+        columns = []
+        for block in sorted(blocks, key=lambda x: x[4]):
+            placed = False
+            for col in columns:
+                if col[-1][4] + col[-1][5] <= block[4]:
+                    col.append(block)
+                    placed = True
+                    break
+            if not placed:
+                columns.append([block])
 
-    def _handle_double_click(self, row, col):
-        item = self.table.item(row, col)
-        if not item:
-            return
-        event_id = item.data(Qt.UserRole)
-        if event_id:
-            self.eventDoubleClicked.emit(event_id)
+        col_width = 300 / max(1, len(columns))  # width for events
+
+        for col_index, col in enumerate(columns):
+            for ev_id, title, start, end, start_min, duration in col:
+                x = self.time_column_width + col_index * col_width
+                y = start_min * self.pixels_per_minute
+                h = duration * self.pixels_per_minute
+
+                # ✅ Use EventBox instead of plain QGraphicsRectItem
+                event_box = EventBox(ev_id, QRectF(x, y, col_width, h))
+                event_box.setBrush(Qt.cyan)
+                event_box.setPen(QPen(QColor("black")))
+                self.scene.addItem(event_box)
+
+                text = QGraphicsTextItem(f"{title}\n{start} - {end}")
+                text.setDefaultTextColor(Qt.black)
+                text.setPos(x + 5, y + 5)
+                self.scene.addItem(text)
+
+        self.scene.setSceneRect(0, 0, 600, 24 * 60 * self.pixels_per_minute)
 
     def _parse_time(self, time_str: str) -> QTime:
-        """Convert 'hh:mm AM/PM' into QTime safely."""
         try:
             parts = time_str.strip().split()
             hh, mm = map(int, parts[0].split(":"))
-            ampm = parts[1].upper() if len(parts) > 1 else "AM"
+            ampm = parts[1].upper()
             if ampm == "PM" and hh != 12:
                 hh += 12
             if ampm == "AM" and hh == 12:
