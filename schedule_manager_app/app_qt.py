@@ -11,6 +11,9 @@ from calendar_page_qt import CalendarPage
 # placeholders for now
 from PySide6.QtWidgets import QWidget, QLabel, QVBoxLayout
 
+import database
+database.init_db()
+
 """
 class CalendarPage(QWidget):
     def __init__(self, app):
