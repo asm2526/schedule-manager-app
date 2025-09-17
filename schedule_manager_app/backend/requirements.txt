@@ -1,0 +1,14 @@
+# web framework
+fastapi
+
+# server
+uvicorn[standard]
+
+# MongoDB async driver
+motor
+
+# data validation & schemas
+pydantic
+
+# load environment variables from .env
+python-dotenv
